@@ -32,7 +32,7 @@ def load_embedding_model(model_name: str = "all-MiniLM-L6-v2"):
     return SentenceTransformer(model_name)
 
 @st.cache_data
-def load_api_key(key_file_path: str = "../anthropic.key") -> str:
+def load_api_key(key_file_path: str = "/home/drkeithcox/anthropic.key") -> str:
     """Load API key from file"""
     try:
         with open(key_file_path, 'r') as f:
@@ -338,7 +338,7 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
                         return "I've hit the API rate limit. Please wait a moment and try again."
                 
                 elif "authentication" in error_str.lower() or "401" in error_str:
-                    return "❌ Authentication error. Please check your API key in ../anthropic.key"
+                    return "❌ Authentication error. Please check your API key in /home/drkeithcox/anthropic.key"
                 
                 else:
                     # For other errors, don't retry
@@ -393,11 +393,11 @@ def main():
     
     # Load API key
     try:
-        api_key = load_api_key("../anthropic.key")
+        api_key = load_api_key("/home/drkeithcox/anthropic.key")
         st.sidebar.success("✅ API key loaded")
     except Exception as e:
         st.sidebar.error(f"❌ Failed to load API key: {e}")
-        st.error("Please ensure your Anthropic API key is in ../anthropic.key")
+        st.error("Please ensure your Anthropic API key is in /home/drkeithcox/anthropic.key")
         st.stop()
     
     # Configuration options
