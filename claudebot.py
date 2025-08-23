@@ -20,7 +20,7 @@ import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
 import io
-import docx
+from docx import Document  # Import the Document class directly
 
 def check_site_access():
     """Check site-wide access password"""
@@ -378,14 +378,14 @@ class HistoricalChatbot:
     def extract_docx_text(self, docx_path: str) -> str:
         """Extract text content from Word document"""
         try:
-            doc = docx.Document(docx_path)
+            doc = Document(docx_path)  # Use Document instead of docx.Document
             text = ""
             for paragraph in doc.paragraphs:
                 text += paragraph.text + "\n"
             return text
         except Exception as e:
             logger.error(f"Error extracting docx text from {docx_path}: {e}")
-            return ""        
+            return ""
               
     def crawl_documents(self) -> List[Tuple[str, str]]:
         """Crawl the document directory and extract text content"""
