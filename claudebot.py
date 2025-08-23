@@ -15,6 +15,12 @@ import time
 import random
 import base64
 import hashlib
+import pdfplumber
+import pytesseract
+from pdf2image import convert_from_path
+from PIL import Image
+import io
+import docx
 
 def check_site_access():
     """Check site-wide access password"""
@@ -39,6 +45,24 @@ def check_site_access():
                 st.rerun()
             else:
                 st.error("Incorrect access code")
+        st.stop()
+
+def select_course():
+    if 'selected_course' not in st.session_state:
+        st.title("Select Your Course")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("World History", use_container_width=True):
+                st.session_state.selected_course = "World History"
+                st.session_state.data_path = "text/WorldHistory"
+                st.rerun()
+        
+        with col2:
+            if st.button("US History", use_container_width=True):
+                st.session_state.selected_course = "US History"
+                st.session_state.data_path = "text/USHistory"
+                st.rerun()
         st.stop()
 
 def hash_password(password):
@@ -322,15 +346,57 @@ class HistoricalChatbot:
         text = ' '.join(text.split())
         return text
     
+    def extract_pdf_text(self, pdf_path: str) -> str:
+        """Extract text content from PDF file using pdfplumber"""
+        try:
+            text = ""
+            with pdfplumber.open(pdf_path) as pdf:
+                for i, page in enumerate(pdf.pages):
+                    page_text = page.extract_text()
+                    print(f"Page {i+1}: '{page_text[:100] if page_text else 'None'}'")
+                    if page_text:
+                        text += page_text + "\n"
+                if len(text.strip()) > 50:
+                    return text
+                
+            # Otherwise, fall back to OCR
+            st.info(f"Using OCR for image-based PDF: {os.path.basename(pdf_path)}")
+            images = convert_from_path(pdf_path)
+            ocr_text = ""
+            
+            for i, image in enumerate(images):
+                page_text = pytesseract.image_to_string(image)
+                if page_text.strip():
+                    ocr_text += page_text + "\n"
+            
+            return ocr_text
+        except Exception as e:
+            logger.error(f"Error extracting PDF text from {pdf_path}: {e}")
+            return ""
+                # If we got meaningful text, return it
+
+    def extract_docx_text(self, docx_path: str) -> str:
+        """Extract text content from Word document"""
+        try:
+            doc = docx.Document(docx_path)
+            text = ""
+            for paragraph in doc.paragraphs:
+                text += paragraph.text + "\n"
+            return text
+        except Exception as e:
+            logger.error(f"Error extracting docx text from {docx_path}: {e}")
+            return ""        
+              
     def crawl_documents(self) -> List[Tuple[str, str]]:
         """Crawl the document directory and extract text content"""
+
         documents = []
         
         if not os.path.exists(self.data_path):
             st.error(f"Data path {self.data_path} does not exist")
             return documents
         
-        supported_extensions = ['.txt', '.lec', '.md', '.csv']
+        supported_extensions = ['.txt', '.lec', '.md', '.csv', '.docx']
         file_stats = {ext: 0 for ext in supported_extensions}
         
         progress_placeholder = st.empty()
@@ -347,8 +413,13 @@ class HistoricalChatbot:
                     progress_placeholder.text(f"Loading documents... {file}")
                     file_path = os.path.join(root, file)
                     try:
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            content = f.read()
+                        if file_ext == '.docx':
+                            content = self.extract_docx_text(file_path)
+                        elif file_ext == '.pdf':
+                            content = self.extract_pdf_text(file_path)
+                        else:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
                         
                         content = self.clean_text(content)
                         if content.strip() and len(content) > 50:
@@ -423,6 +494,39 @@ class HistoricalChatbot:
         st.success("Embeddings created successfully!")
         return df
     
+    def get_embedding_filename(self):
+        """Get course-specific embedding filename"""
+        course = st.session_state.get('selected_course', 'World History')
+        if course == "World History":
+            return 'world_history_embeddings.pkl'
+        elif course == "US History":
+            return 'us_history_embeddings.pkl'
+        else:
+            return 'historical_embeddings.pkl'
+
+    def save_embeddings(self, df: pd.DataFrame):
+        """Save embeddings to course-specific pickle file"""
+        filename = self.get_embedding_filename()
+        try:
+            df.to_pickle(filename)
+            st.success(f"Embeddings saved to {filename}")
+        except Exception as e:
+            st.error(f"Error saving embeddings: {e}")
+
+    def load_embeddings(self) -> Optional[pd.DataFrame]:
+        """Load embeddings from course-specific pickle file"""
+        filename = self.get_embedding_filename()
+        try:
+            df = pd.read_pickle(filename)
+            st.success(f"Embeddings loaded from {filename}")
+            return df
+        except FileNotFoundError:
+            st.info(f"No existing embeddings file found for this course. Will create new embeddings.")
+            return None
+        except Exception as e:
+            st.error(f"Error loading embeddings: {e}")
+            return None
+    '''
     def save_embeddings(self, df: pd.DataFrame, filename: str = 'historical_embeddings.pkl'):
         """Save embeddings to pickle file"""
         try:
@@ -443,7 +547,7 @@ class HistoricalChatbot:
         except Exception as e:
             st.error(f"Error loading embeddings: {e}")
             return None
-    
+    '''
     def load_or_create_embeddings(self):
         """Load existing embeddings or create new ones"""
         with st.spinner("Loading embeddings..."):
@@ -612,6 +716,13 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
 
 def main():
     check_site_access()
+    select_course()  # Add this after password check
+
+    # Debug: Check what's in session state
+    #st.write("DEBUG - Session State:")
+    #st.write(f"selected_course: {st.session_state.get('selected_course', 'NOT SET')}")
+    #st.write(f"data_path: {st.session_state.get('data_path', 'NOT SET')}")
+
     create_custom_header()
     
     # Load API key
@@ -620,9 +731,11 @@ def main():
     except Exception as e:
         st.error(f"Failed to load API key: {e}")
         st.stop()
+        
+    # Get course-specific data path from session state
+    data_path = st.session_state.get('data_path', 'text/WorldHistory')  # fallback to World History
     
     # Default configuration
-    data_path = "text/Transcripts"
     max_tokens = 500
     top_k = 3
     similarity_threshold = 0.1
@@ -638,8 +751,8 @@ def main():
     # Load embedding model
     embedding_model = load_embedding_model()
     
-    # Initialize chatbot
-    if 'chatbot' not in st.session_state:
+     # Initialize chatbot with course-specific path
+    if 'chatbot' not in st.session_state or st.session_state.chatbot.data_path != data_path:
         st.session_state.chatbot = HistoricalChatbot(
             api_key, data_path, max_tokens, embedding_model
         )
