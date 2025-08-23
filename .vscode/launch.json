@@ -1,0 +1,44 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Streamlit App",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/streamlit",
+            "args": [
+                "run",
+                "${workspaceFolder}/claudebot.py",
+                "--server.port=8501",
+                "--server.address=127.0.0.1",
+                "--server.headless=true",
+                "--browser.gatherUsageStats=false"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "Debug Python Script Only",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/claudebot.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "args": []
+        },
+        {
+            "name": "Test Embeddings",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_embeddings.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/.venv/bin/python"
+        }
+    ]
+}

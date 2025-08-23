@@ -13,6 +13,204 @@ import logging
 from datetime import datetime
 import time
 import random
+import base64
+import hashlib
+
+def check_site_access():
+    """Check site-wide access password"""
+    if 'site_authenticated' not in st.session_state:
+        st.session_state.site_authenticated = False
+    
+    if not st.session_state.site_authenticated:
+        st.title("Access Required")
+        st.write("This site is restricted to Professor Cox's history students.")
+        
+        password = st.text_input("Enter your section's access code:", type="password", key="site_password")
+        
+        if st.button("Access Site"):
+            valid_passwords = [
+                "History101A",  # Section 1
+                "History101B",  # Section 2  
+                "History101C"   # Section 3
+            ]
+            
+            if password in valid_passwords:
+                st.session_state.site_authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect access code")
+        st.stop()
+
+def hash_password(password):
+    """Hash a password for storing"""
+    return hashlib.sha256(str.encode(password)).hexdigest()
+
+def check_admin_password():
+    """Check if admin password is correct"""
+    ADMIN_PASSWORD_HASH = hash_password("Pswd1Hell")
+    
+    if 'admin_authenticated' not in st.session_state:
+        st.session_state.admin_authenticated = False
+    
+    if not st.session_state.admin_authenticated:
+        # Put admin login at bottom in an expander
+        with st.sidebar.expander("Admin Access", expanded=False):
+            password_input = st.text_input("Password:", type="password", key="admin_password")
+            
+            if st.button("Login", key="admin_login"):
+                if hash_password(password_input) == ADMIN_PASSWORD_HASH:
+                    st.session_state.admin_authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect password")
+                    return False
+        return False
+    else:
+        # Add logout button for admin at bottom
+        with st.sidebar.expander("Admin Logout", expanded=False):
+            if st.button("Logout"):
+                st.session_state.admin_authenticated = False
+                st.rerun()
+        return True
+
+def create_admin_sidebar(data_path, max_tokens, top_k, similarity_threshold, model_options, selected_model, chatbot):
+    """Create the admin-only sidebar controls"""
+    st.sidebar.header("⚙️ Admin Configuration")
+    
+    # Configuration options (admin only)
+    new_data_path = st.sidebar.text_input("📁 Documents Path", value=data_path)
+    new_max_tokens = st.sidebar.slider("🔥 Max Tokens per Chunk", 100, 1000, max_tokens)
+    new_top_k = st.sidebar.slider("📄 Documents to Retrieve", 1, 10, top_k)
+    new_similarity_threshold = st.sidebar.slider("📊 Similarity Threshold", 0.0, 1.0, similarity_threshold, 0.05)
+    
+    # Model selection (admin only)
+    new_selected_model = st.sidebar.selectbox("🤖 Claude Model", list(model_options.keys()), 
+                                             index=list(model_options.keys()).index(selected_model))
+    
+    # API status indicator
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**🔌 API Status**")
+    if 'last_api_error' in st.session_state:
+        if "overloaded" in st.session_state.last_api_error.lower():
+            st.sidebar.error("⚠️ API experiencing high traffic")
+            st.sidebar.info("💡 Try again in 1-2 minutes")
+        else:
+            st.sidebar.warning("⚠️ API issue detected")
+    else:
+        st.sidebar.success("✅ API connection ready")
+    
+    # Admin controls
+    st.sidebar.markdown("---")
+    refresh_embeddings = st.sidebar.button("🔄 Refresh Embeddings")
+    clear_chat = st.sidebar.button("🗑️ Clear Chat History")
+    
+    # Document statistics (admin only)
+    if chatbot.df is not None and len(chatbot.df) > 0:
+        with st.sidebar.expander("📊 Document Statistics"):
+            df = chatbot.df
+            st.write(f"**Total chunks:** {len(df)}")
+            st.write(f"**Unique documents:** {df['filename'].nunique()}")
+            st.write(f"**Average tokens per chunk:** {df['n_tokens'].mean():.0f}")
+            
+            # Show document breakdown by file type
+            st.write("**Documents by type:**")
+            file_types = {}
+            for filename in df['filename'].unique():
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in file_types:
+                    file_types[ext] += 1
+                else:
+                    file_types[ext] = 1
+            
+            for ext, count in file_types.items():
+                st.write(f"• {ext.upper() if ext else 'No extension'}: {count} files")
+            
+            # Show document breakdown
+            st.write("**Chunks per document:**")
+            doc_counts = df['filename'].value_counts()
+            for doc, count in doc_counts.head(10).items():
+                file_ext = os.path.splitext(doc)[1].upper()
+                st.write(f"• {doc} ({file_ext}): {count} chunks")
+    
+    return (new_data_path, new_max_tokens, new_top_k, new_similarity_threshold, 
+            new_selected_model, refresh_embeddings, clear_chat)
+
+def create_student_sidebar():
+    """Create a simplified sidebar for students"""
+    st.sidebar.header("💡 How to Use This Chatbot")
+    st.sidebar.markdown("""
+    1. **Ask questions** about historical topics
+    2. **Be specific** in your queries for better results
+    3. **Reference documents** when possible
+    4. **Explore different** historical periods and themes
+    """)
+    
+    # Example questions for students
+    with st.sidebar.expander("💬 Example Questions"):
+        examples = [
+            "What topics are covered in my documents?",
+            "Tell me about the Civil War",
+            "What happened in 1776?",
+            "Summarize the main themes in my historical documents",
+            "What can you tell me about the industrial revolution?"
+        ]
+        
+        for example in examples:
+            if st.sidebar.button(f"💬 {example}", key=f"example_{hash(example)}"):
+                st.session_state.messages.append({"role": "user", "content": example})
+                st.rerun()
+
+def get_base64_image(image_path):
+    """Convert image to base64 string"""
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except FileNotFoundError:
+        return ""
+
+def create_custom_header():
+    """Create a custom header with image and title"""
+    image_base64 = get_base64_image("profile.png")  # or prof_cox.png
+    
+    st.markdown(f"""
+    <style>
+    .header-container {{
+        display: flex;
+        align-items: center;
+        padding: 1rem 0;
+        margin-bottom: 2rem;
+        border-bottom: 2px solid #f0f0f0;
+    }}
+    .header-image {{
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        margin-right: 1rem;
+        object-fit: cover;
+    }}
+    .header-title {{
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1f4e79;
+        margin: 0;
+        line-height: 1.2;
+    }}
+    .header-subtitle {{
+        font-size: 1rem;
+        color: #666;
+        font-style: italic;
+        margin: 0;
+        margin-top: 0.25rem;
+    }}
+    </style>
+    <div class="header-container">
+        <img src="data:image/jpeg;base64,{image_base64}" class="header-image" alt="Prof. Cox">
+        <div>
+            <h1 class="header-title">Prof. Cosmic History Chatbot</h1>
+            <p class="header-subtitle">Ask questions about historical documents using local embeddings and Claude AI</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -350,6 +548,21 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
         """Generate a response using Claude API with document context"""
         relevant_docs = self.search_documents(query, top_k=3)
         
+        # Check if this is a student (non-admin) session
+        is_admin = st.session_state.get('admin_authenticated', False)
+        
+        # For students: only proceed if relevant documents are found
+        if len(relevant_docs) == 0 and not is_admin:
+            return """I can only help with questions related to the historical documents and topics covered in Professor Cox's course materials. 
+
+    Please try asking about:
+    - Topics covered in the assigned readings
+    - Historical events, people, or themes from the course documents
+    - Specific time periods or subjects we've studied
+
+    If you have questions outside the course materials, please ask Professor Cox directly."""
+        
+        # Build context from relevant documents
         context = ""
         if len(relevant_docs) > 0:
             context = "=== RELEVANT DOCUMENTS ===\n\n"
@@ -360,7 +573,7 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
         else:
             context = "=== NO RELEVANT DOCUMENTS FOUND ===\n\n"
         
-        # Prepare conversation history (last 6 messages)
+        # Prepare conversation history
         history_text = ""
         if conversation_history:
             history_text = "Previous conversation:\n"
@@ -369,15 +582,28 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
                 history_text += f"{role}: {msg['content']}\n"
             history_text += "\n"
         
-        full_prompt = f"""{self.get_system_prompt()}
+        # Use different system prompts for students vs admin
+        if is_admin:
+            system_prompt = self.get_system_prompt()
+        else:
+            system_prompt = """You are Professor Cox's historical assistant with access to specific course documents. Your role is to:
 
-{context}{history_text}Current question: {query}
+    1. Base your answer primarily on the provided course documents
+    2. Always cite which document(s) the information comes from
+    3. You may add relevant historical context or details that supplement the document content, but ONLY if they directly relate to the topics, events, people, or time periods discussed in the documents
+    4. Do not answer questions about topics that are completely unrelated to the course materials
 
-Please provide a helpful and accurate response based on the above information."""
+    Be educational and engaging while staying focused on the historical content covered in the course."""
+
+        full_prompt = f"""{system_prompt}
+
+    {context}{history_text}Current question: {query}
+
+    Please provide a response based on the documents, supplementing with relevant historical knowledge only when it directly relates to the document content."""
         
-        # Make API call with error handling
+        # Make API call
         response = self.client.messages.create(
-            model=getattr(self, 'selected_model', "claude-3-5-sonnet-20241022"),
+            model=getattr(self, 'selected_model', "claude-sonnet-4-20250514"),
             max_tokens=1000,
             temperature=0.3,
             messages=[{"role": "user", "content": full_prompt}]
@@ -385,98 +611,70 @@ Please provide a helpful and accurate response based on the above information.""
         return response.content[0].text
 
 def main():
-    st.title("📚 Historical Documents Chatbot")
-    st.markdown("*Ask questions about your historical documents using local embeddings and Claude AI*")
-    
-    # Sidebar configuration
-    st.sidebar.header("⚙️ Configuration")
+    check_site_access()
+    create_custom_header()
     
     # Load API key
     try:
         api_key = load_api_key("/home/drkeithcox/anthropic.key")
-        st.sidebar.success("✅ API key loaded")
     except Exception as e:
-        st.sidebar.error(f"❌ Failed to load API key: {e}")
-        st.error("Please ensure your Anthropic API key is in /home/drkeithcox/anthropic.key")
+        st.error(f"Failed to load API key: {e}")
         st.stop()
     
-    # Configuration options
-    data_path = st.sidebar.text_input("📁 Documents Path", value="text/Transcripts")
-    max_tokens = st.sidebar.slider("📄 Max Tokens per Chunk", 100, 1000, 500)
-    top_k = st.sidebar.slider("🔍 Documents to Retrieve", 1, 10, 3)
-    similarity_threshold = st.sidebar.slider("📊 Similarity Threshold", 0.0, 1.0, 0.1, 0.05)
+    # Default configuration
+    data_path = "text/Transcripts"
+    max_tokens = 500
+    top_k = 3
+    similarity_threshold = 0.1
     
-    # Model selection
     model_options = {
+        "Claude Sonnet 4": "claude-sonnet-4-20250514",
         "Claude 3.5 Sonnet": "claude-3-5-sonnet-20241022",
         "Claude 3 Haiku (Faster)": "claude-3-haiku-20240307",
         "Claude 3 Opus (Most Capable)": "claude-3-opus-20240229"
     }
-    selected_model = st.sidebar.selectbox("🤖 Claude Model", list(model_options.keys()))
-    
-    # API status indicator
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**🔌 API Status**")
-    if 'last_api_error' in st.session_state:
-        if "overloaded" in st.session_state.last_api_error.lower():
-            st.sidebar.error("⚠️ API experiencing high traffic")
-            st.sidebar.info("💡 Try again in 1-2 minutes")
-        else:
-            st.sidebar.warning("⚠️ API issue detected")
-    else:
-        st.sidebar.success("✅ API connection ready")
+    selected_model = "Claude Sonnet 4"  # Changed default
     
     # Load embedding model
     embedding_model = load_embedding_model()
-    st.sidebar.success("✅ Embedding model loaded")
     
     # Initialize chatbot
     if 'chatbot' not in st.session_state:
         st.session_state.chatbot = HistoricalChatbot(
             api_key, data_path, max_tokens, embedding_model
         )
-        # Store selected model
         st.session_state.chatbot.selected_model = model_options[selected_model]
         st.session_state.chatbot.load_or_create_embeddings()
     
-    # Update model if changed
-    if hasattr(st.session_state.chatbot, 'selected_model'):
-        if st.session_state.chatbot.selected_model != model_options[selected_model]:
-            st.session_state.chatbot.selected_model = model_options[selected_model]
-    else:
-        st.session_state.chatbot.selected_model = model_options[selected_model]
+    # Always show student content first (unless admin is already authenticated)
+    if not st.session_state.get('admin_authenticated', False):
+        create_student_sidebar()
+    
+    # Check admin authentication (this will appear at bottom of sidebar)
+    is_admin = check_admin_password()
+    
+    if is_admin:
+        # Clear the sidebar and show admin controls
+        st.sidebar.empty()
+        (data_path, max_tokens, top_k, similarity_threshold, selected_model,
+         refresh_embeddings, clear_chat) = create_admin_sidebar(
+            data_path, max_tokens, top_k, similarity_threshold,
+            model_options, selected_model, st.session_state.chatbot
+        )
+        
+        # Handle admin actions
+        if refresh_embeddings:
+            st.session_state.chatbot.df = None
+            st.session_state.chatbot.load_or_create_embeddings()
+            st.rerun()
+        
+        if clear_chat:
+            st.session_state.messages = []
+            st.rerun()
     
     # Initialize chat history
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    
-    # Display document statistics
-    if st.session_state.chatbot.df is not None and len(st.session_state.chatbot.df) > 0:
-        with st.sidebar.expander("📊 Document Statistics"):
-            df = st.session_state.chatbot.df
-            st.write(f"**Total chunks:** {len(df)}")
-            st.write(f"**Unique documents:** {df['filename'].nunique()}")
-            st.write(f"**Average tokens per chunk:** {df['n_tokens'].mean():.0f}")
-            
-            # Show document breakdown by file type
-            st.write("**Documents by type:**")
-            file_types = {}
-            for filename in df['filename'].unique():
-                ext = os.path.splitext(filename)[1].lower()
-                if ext in file_types:
-                    file_types[ext] += 1
-                else:
-                    file_types[ext] = 1
-            
-            for ext, count in file_types.items():
-                st.write(f"• {ext.upper() if ext else 'No extension'}: {count} files")
-            
-            # Show document breakdown
-            st.write("**Chunks per document:**")
-            doc_counts = df['filename'].value_counts()
-            for doc, count in doc_counts.head(10).items():
-                file_ext = os.path.splitext(doc)[1].upper()
-                st.write(f"• {doc} ({file_ext}): {count} chunks")
     
     # Chat interface
     st.markdown("---")
@@ -497,46 +695,15 @@ def main():
         # Generate response
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
+            message_placeholder.markdown("Searching documents and generating response...")
             
-            # Show loading message
-            message_placeholder.markdown("🔍 Searching documents and generating response...")
-            
-            # Generate response with retry logic
             response = st.session_state.chatbot.generate_response_with_retry(
                 prompt, st.session_state.messages[:-1]
             )
             
-            # Display final response
             message_placeholder.markdown(response)
         
-        # Add assistant response
         st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    # Sidebar controls
-    st.sidebar.markdown("---")
-    if st.sidebar.button("🔄 Refresh Embeddings"):
-        st.session_state.chatbot.df = None
-        st.session_state.chatbot.load_or_create_embeddings()
-        st.experimental_rerun()
-    
-    if st.sidebar.button("🗑️ Clear Chat History"):
-        st.session_state.messages = []
-        st.experimental_rerun()
-    
-    # Example questions
-    with st.sidebar.expander("💡 Example Questions"):
-        examples = [
-            "What topics are covered in my documents?",
-            "Tell me about the Civil War",
-            "What happened in 1776?",
-            "Summarize the main themes in my historical documents",
-            "What can you tell me about the industrial revolution?"
-        ]
-        
-        for example in examples:
-            if st.button(f"💬 {example}", key=f"example_{hash(example)}"):
-                st.session_state.messages.append({"role": "user", "content": example})
-                st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
