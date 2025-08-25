@@ -230,8 +230,9 @@ def create_custom_header():
     <div class="header-container">
         <img src="data:image/jpeg;base64,{image_base64}" class="header-image" alt="Prof. Cox">
         <div>
-            <h1 class="header-title">Prof. Cosmic History Chatbot</h1>
-            <p class="header-subtitle">Ask questions about historical documents using local embeddings and Claude AI</p>
+            <h1 class="header-title">Tai - Your Virtual Graduate Teaching Assistant</h1>
+            <p class="header-subtitle">Tai answers questions about course material in conversational style.</p>
+            <p class="header-subtitle">Tai is still learning so might make mistakes.</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
