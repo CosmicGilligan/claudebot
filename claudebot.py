@@ -23,7 +23,7 @@ import io
 from docx import Document
 import csv
 
-def log_conversation(user_query: str, bot_response: str, course: str, relevant_docs: pd.DataFrame = None, session_id: str = None):
+def log_conversation(user_query: str, bot_response: str, course: str, relevant_docs: Optional[pd.DataFrame] = None, session_id: Optional[str] = None):
     """Log conversation to CSV file with relevant metadata"""
     try:
         # Create logs directory if it doesn't exist
@@ -78,13 +78,14 @@ def check_site_access():
         st.title("Access Required")
         st.write("This site is restricted to Professor Cox's history students.")
         
-        password = st.text_input("Enter your section's access code:", type="password", key="site_password")
+        password = st.text_input("Enter your section's access code and then press Access Site button:", type="password", key="site_password")
         
         if st.button("Access Site"):
             valid_passwords = [
-                "History101A",  # Section 1
-                "History101B",  # Section 2  
-                "History101C"   # Section 3
+                "HIST101-10103",  # Section 1
+                "HIST101-14528",  # Section 2  
+                "HIST110-10114",  # Section 3
+                "Srf1mnky"        # Admin
             ]
             
             if password in valid_passwords:
@@ -468,10 +469,14 @@ class HistoricalChatbot:
         self.df = None
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
         self.embedding_model = embedding_model
+        self.selected_model = "claude-sonnet-4-20250514"  # Add default selected_model
         
     def get_embedding(self, text: str) -> np.ndarray:
         """Get embedding for a given text using local model"""
         try:
+            if self.embedding_model is None:
+                logger.error("Embedding model is None")
+                return np.array([])
             embedding = self.embedding_model.encode(text, convert_to_tensor=False)
             return embedding
         except Exception as e:
@@ -481,6 +486,9 @@ class HistoricalChatbot:
     def get_embeddings_batch(self, texts: List[str]) -> np.ndarray:
         """Get embeddings for multiple texts efficiently"""
         try:
+            if self.embedding_model is None:
+                logger.error("Embedding model is None")
+                return np.array([])
             embeddings = self.embedding_model.encode(texts, convert_to_tensor=False)
             return embeddings
         except Exception as e:
@@ -739,18 +747,33 @@ class HistoricalChatbot:
         if len(query_embedding) == 0:
             return pd.DataFrame()
         
-        doc_embeddings = np.stack(self.df['embeddings'].values)
-        similarities = self.calculate_similarity(query_embedding, doc_embeddings)
-        
-        df_with_similarities = self.df.copy()
-        df_with_similarities['similarity'] = similarities
-        
-        relevant_docs = df_with_similarities[df_with_similarities['similarity'] >= similarity_threshold]
-        
-        if len(relevant_docs) == 0:
+        # Check if embeddings exist and are valid
+        if 'embeddings' not in self.df.columns:
             return pd.DataFrame()
         
-        return relevant_docs.nlargest(top_k, 'similarity')
+        # Filter out rows with empty embeddings
+        valid_embeddings = self.df['embeddings'].apply(lambda x: isinstance(x, np.ndarray) and len(x) > 0)
+        if not valid_embeddings.any():
+            return pd.DataFrame()
+        
+        valid_df = self.df[valid_embeddings].copy()
+        
+        try:
+            doc_embeddings_list = valid_df['embeddings'].tolist()
+            doc_embeddings = np.array(doc_embeddings_list)
+            similarities = self.calculate_similarity(query_embedding, doc_embeddings)
+            
+            valid_df['similarity'] = similarities
+            
+            relevant_docs = valid_df[valid_df['similarity'] >= similarity_threshold]
+            
+            if len(relevant_docs) == 0:
+                return pd.DataFrame()
+            
+            return relevant_docs.nlargest(top_k, 'similarity')
+        except Exception as e:
+            logger.error(f"Error in document search: {e}")
+            return pd.DataFrame()
     
     def get_system_prompt(self) -> str:
         """Get the system prompt for Claude"""
@@ -878,14 +901,36 @@ Be educational and engaging while staying focused on the historical content cove
 Please provide a response based on the documents, supplementing with relevant historical knowledge only when it directly relates to the document content."""
         
         # Make API call
-        response = self.client.messages.create(
-            model=getattr(self, 'selected_model', "claude-sonnet-4-20250514"),
-            max_tokens=1000,
-            temperature=0.3,
-            messages=[{"role": "user", "content": full_prompt}]
-        )
-        
-        response_text = response.content[0].text
+        try:
+            response = self.client.messages.create(
+                model=self.selected_model,
+                max_tokens=1000,
+                temperature=0.3,
+                messages=[{"role": "user", "content": full_prompt}]
+            )
+            
+            # Handle different response types safely using getattr
+            response_text = ""
+            if hasattr(response, 'content') and response.content:
+                for content_block in response.content:
+                    # Check if it's a text type block and safely get text
+                    block_type = getattr(content_block, 'type', None)
+                    if block_type == 'text':
+                        block_text = getattr(content_block, 'text', '')
+                        if block_text:
+                            response_text += block_text
+                    # Legacy fallback - only if no type attribute exists
+                    elif block_type is None:
+                        block_text = getattr(content_block, 'text', '')
+                        if block_text:
+                            response_text += block_text
+            
+            if not response_text:
+                response_text = "I apologize, but I couldn't generate a proper response."
+                
+        except Exception as e:
+            logger.error(f"Error in API call: {e}")
+            response_text = f"I encountered an error while processing your request: {str(e)}"
         
         # Log the conversation
         log_conversation(

@@ -1,0 +1,39 @@
+timestamp,session_id,course,user_query,bot_response,response_length,relevant_docs_found,doc_filenames,avg_similarity,is_admin
+2025-08-25T17:31:25.814584,20250825_173125_3384,Access Log,Site access with password: History101A,Site access granted,19,0,,0,False
+2025-08-25T17:31:32.044987,20250825_173125_3384,US History,Course selection: US History,US History course selected,26,0,,0,False
+2025-08-25T17:31:58.153144,20250825_173125_3384,US History,who was web dubois,"Based on the course documents, W.E.B. Du Bois was a significant figure discussed in Professor Cox's materials on race and society.
+
+According to the course documents, Du Bois was:
+
+**A Progressive Era Reformer**: The documents indicate that Du Bois ""was a progressive and he was part of this progressive movement"" during the turn of the 20th century, specifically noting that while ""we don't think about race as being part of the progressive movement...it really was part of this era of thinking abou...",1758,3,Source Analysis Project - Race and Society 4-25.docx; 19th c politics.txt; 122.txt,0.34657001,False
+2025-08-25T17:40:06.229697,20250825_174006_8181,Access Log,Site access with password: History101A,Site access granted,19,0,,0,False
+2025-08-25T17:40:09.735556,20250825_174006_8181,US History,Course selection: US History,US History course selected,26,0,,0,False
+2025-08-25T17:42:30.858059,20250825_174006_8181,US History,why do we study history,"Based on Professor Cox's lecture (Document 001.txt), there are several important reasons why we study history, even though most Americans aren't naturally drawn to it:
+
+## The Practical Power of Historical Knowledge
+
+Professor Cox emphasizes that **""whoever controls the past controls the present. Whoever controls the present controls the future""** - a reference to George Orwell's *1984*. This isn't just a literary concept; it's a real principle about how powerful historical memory (or lack of it...",2026,3,001.txt; 001.txt; 001.txt,0.59974825,False
+2025-08-25T17:43:57.231174,20250825_174006_8181,US History,what did lincoln say about history,"Based on the course documents, Lincoln had a profound understanding of how history works and our role in making it. Here are his key insights about history:
+
+## History Happens in the Present, Not Just the Past
+
+From Professor Cox's lecture (Document 001.txt), Lincoln understood that **""history is happening right now""** - not just something we read about from the past. As the professor explains Lincoln's thinking: **""people in the future are going to look at us and they're going to say, what did...",2254,3,soul1_podcast.md; 001.txt; 0.1 Why Do We Study History.txt,0.6212903,False
+2025-08-25T17:47:11.462235,20250825_174711_2112,Access Log,Site access with password: History101A,Site access granted,19,0,,0,False
+2025-08-25T17:47:15.472582,20250825_174711_2112,World History,Course selection: World History,World History course selected,29,0,,0,False
+2025-08-25T17:49:40.758907,20250825_174711_2112,World History,why do we study history,"Based on Professor Cox's course materials, we study history for several interconnected and vital reasons:
+
+## Active Participation in Democracy
+
+According to the course documents, history isn't just about understanding ""what happened back then."" As Professor Cox explains, **""History is not just something that happened in the past. It's being made now through our choices and actions. Every day we're writing the history that future generations will study and learn from.""** (*0.1 Why Do We Study Hi...",3258,3,05 Europe on the Eve of Expansion.txt; nature_of_sources.txt; 0.1 Why Do We Study History.txt,0.58951527,False
+2025-08-25T17:55:03.659615,20250825_175503_3308,Access Log,Site access with password: HIST101-10103,Site access granted,19,0,,0,False
+2025-08-25T17:55:07.502135,20250825_175503_3308,World History,Course selection: World History,World History course selected,29,0,,0,False
+2025-08-25T18:07:30.014093,20250825_180730_5096,Access Log,Failed site access attempt with password: Srf1mnky,Access denied,13,0,,0,False
+2025-08-25T18:08:23.152065,20250825_180730_5096,Access Log,Site access with password: History101A,Site access granted,19,0,,0,False
+2025-08-25T18:08:27.602077,20250825_180730_5096,US History,Course selection: US History,US History course selected,26,0,,0,False
+2025-08-25T18:15:27.633613,20250825_181527_4788,Access Log,Failed site access attempt with password: Srf1mnky,Access denied,13,0,,0,False
+2025-08-25T18:15:41.529514,20250825_181527_4788,Access Log,Failed site access attempt with password: Srf1mnky,Access denied,13,0,,0,False
+2025-08-25T18:15:53.182721,20250825_181527_4788,Access Log,Site access with password: HIST101-10103,Site access granted,19,0,,0,False
+2025-08-25T18:17:44.607096,20250825_181744_3087,Access Log,Site access with password: Srf1mnky,Site access granted,19,0,,0,False
+2025-08-25T18:17:49.333408,20250825_181744_3087,US History,Course selection: US History,US History course selected,26,0,,0,False
+2025-08-25T18:37:18.945454,20250825_183718_2635,Access Log,Site access with password: Srf1mnky,Site access granted,19,0,,0,False
+2025-08-25T18:37:23.834600,20250825_183718_2635,World History,Course selection: World History,World History course selected,29,0,,0,False
