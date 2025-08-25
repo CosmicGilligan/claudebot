@@ -20,7 +20,54 @@ import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
 import io
-from docx import Document  # Import the Document class directly
+from docx import Document
+import csv
+
+def log_conversation(user_query: str, bot_response: str, course: str, relevant_docs: pd.DataFrame = None, session_id: str = None):
+    """Log conversation to CSV file with relevant metadata"""
+    try:
+        # Create logs directory if it doesn't exist
+        log_dir = "conversation_logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        
+        # Generate session ID if not provided
+        if not session_id:
+            if 'session_id' not in st.session_state:
+                st.session_state.session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(random.randint(1000, 9999))
+            session_id = st.session_state.session_id
+        
+        # Prepare log entry
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'session_id': session_id,
+            'course': course,
+            'user_query': user_query,
+            'bot_response': bot_response[:500] + "..." if len(bot_response) > 500 else bot_response,  # Truncate long responses
+            'response_length': len(bot_response),
+            'relevant_docs_found': len(relevant_docs) if relevant_docs is not None else 0,
+            'doc_filenames': "; ".join(relevant_docs['filename'].tolist()) if relevant_docs is not None and len(relevant_docs) > 0 else "",
+            'avg_similarity': relevant_docs['similarity'].mean() if relevant_docs is not None and len(relevant_docs) > 0 else 0,
+            'is_admin': st.session_state.get('admin_authenticated', False)
+        }
+        
+        # Create filename with date
+        log_filename = f"{log_dir}/conversations_{datetime.now().strftime('%Y_%m')}.csv"
+        
+        # Check if file exists to determine if we need headers
+        file_exists = os.path.exists(log_filename)
+        
+        # Write to CSV
+        with open(log_filename, 'a', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=log_entry.keys())
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(log_entry)
+            
+        logger.info(f"Conversation logged to {log_filename}")
+        
+    except Exception as e:
+        logger.error(f"Error logging conversation: {e}")
 
 def check_site_access():
     """Check site-wide access password"""
@@ -42,9 +89,23 @@ def check_site_access():
             
             if password in valid_passwords:
                 st.session_state.site_authenticated = True
+                # Log the access
+                log_conversation(
+                    user_query=f"Site access with password: {password}",
+                    bot_response="Site access granted",
+                    course="Access Log",
+                    relevant_docs=None
+                )
                 st.rerun()
             else:
                 st.error("Incorrect access code")
+                # Log failed access attempt
+                log_conversation(
+                    user_query=f"Failed site access attempt with password: {password}",
+                    bot_response="Access denied",
+                    course="Access Log",
+                    relevant_docs=None
+                )
         st.stop()
 
 def select_course():
@@ -56,12 +117,26 @@ def select_course():
             if st.button("World History", use_container_width=True):
                 st.session_state.selected_course = "World History"
                 st.session_state.data_path = "text/WorldHistory"
+                # Log course selection
+                log_conversation(
+                    user_query="Course selection: World History",
+                    bot_response="World History course selected",
+                    course="World History",
+                    relevant_docs=None
+                )
                 st.rerun()
         
         with col2:
             if st.button("US History", use_container_width=True):
                 st.session_state.selected_course = "US History"
                 st.session_state.data_path = "text/USHistory"
+                # Log course selection
+                log_conversation(
+                    user_query="Course selection: US History",
+                    bot_response="US History course selected",
+                    course="US History",
+                    relevant_docs=None
+                )
                 st.rerun()
         st.stop()
 
@@ -84,9 +159,23 @@ def check_admin_password():
             if st.button("Login", key="admin_login"):
                 if hash_password(password_input) == ADMIN_PASSWORD_HASH:
                     st.session_state.admin_authenticated = True
+                    # Log admin access
+                    log_conversation(
+                        user_query="Admin login successful",
+                        bot_response="Admin access granted",
+                        course=st.session_state.get('selected_course', 'Unknown'),
+                        relevant_docs=None
+                    )
                     st.rerun()
                 else:
                     st.error("Incorrect password")
+                    # Log failed admin attempt
+                    log_conversation(
+                        user_query="Failed admin login attempt",
+                        bot_response="Admin access denied",
+                        course=st.session_state.get('selected_course', 'Unknown'),
+                        relevant_docs=None
+                    )
                     return False
         return False
     else:
@@ -97,9 +186,105 @@ def check_admin_password():
                 st.rerun()
         return True
 
+def view_conversation_logs():
+    """Display conversation logs for admin review"""
+    st.header("📊 Conversation Logs")
+    
+    log_dir = "conversation_logs"
+    if not os.path.exists(log_dir):
+        st.info("No conversation logs found yet.")
+        return
+    
+    # Get all log files
+    log_files = [f for f in os.listdir(log_dir) if f.endswith('.csv')]
+    
+    if not log_files:
+        st.info("No conversation logs found yet.")
+        return
+    
+    # Select log file
+    selected_file = st.selectbox("Select log file:", sorted(log_files, reverse=True))
+    
+    if selected_file:
+        log_path = os.path.join(log_dir, selected_file)
+        
+        try:
+            df = pd.read_csv(log_path)
+            
+            # Display summary statistics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Conversations", len(df))
+            with col2:
+                st.metric("Unique Sessions", df['session_id'].nunique())
+            with col3:
+                st.metric("World History", len(df[df['course'] == 'World History']))
+            with col4:
+                st.metric("US History", len(df[df['course'] == 'US History']))
+            
+            # Filter options
+            st.subheader("Filters")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                course_filter = st.selectbox("Course:", ['All'] + list(df['course'].unique()))
+            with col2:
+                date_from = st.date_input("From date:", value=pd.to_datetime(df['timestamp']).min().date())
+            with col3:
+                date_to = st.date_input("To date:", value=pd.to_datetime(df['timestamp']).max().date())
+            
+            # Apply filters
+            filtered_df = df.copy()
+            if course_filter != 'All':
+                filtered_df = filtered_df[filtered_df['course'] == course_filter]
+            
+            filtered_df['timestamp'] = pd.to_datetime(filtered_df['timestamp'])
+            filtered_df = filtered_df[
+                (filtered_df['timestamp'].dt.date >= date_from) &
+                (filtered_df['timestamp'].dt.date <= date_to)
+            ]
+            
+            # Display filtered results
+            st.subheader(f"Conversations ({len(filtered_df)} entries)")
+            
+            # Show most recent conversations first
+            display_df = filtered_df.sort_values('timestamp', ascending=False)[
+                ['timestamp', 'course', 'session_id', 'user_query', 'relevant_docs_found', 'is_admin']
+            ].head(50)  # Show latest 50
+            
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                column_config={
+                    "timestamp": st.column_config.DatetimeColumn("Time"),
+                    "course": "Course",
+                    "session_id": "Session",
+                    "user_query": st.column_config.TextColumn("Question", width="large"),
+                    "relevant_docs_found": "Docs Found",
+                    "is_admin": "Admin"
+                }
+            )
+            
+            # Export filtered data
+            if st.button("📥 Download Filtered Data as CSV"):
+                csv_data = filtered_df.to_csv(index=False)
+                st.download_button(
+                    label="💾 Download CSV",
+                    data=csv_data,
+                    file_name=f"filtered_conversations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+                
+        except Exception as e:
+            st.error(f"Error reading log file: {e}")
+
 def create_admin_sidebar(data_path, max_tokens, top_k, similarity_threshold, model_options, selected_model, chatbot):
     """Create the admin-only sidebar controls"""
     st.sidebar.header("⚙️ Admin Configuration")
+    
+    # Add conversation logs view
+    if st.sidebar.button("📊 View Conversation Logs"):
+        st.session_state.show_logs = True
     
     # Configuration options (admin only)
     new_data_path = st.sidebar.text_input("📁 Documents Path", value=data_path)
@@ -374,12 +559,11 @@ class HistoricalChatbot:
         except Exception as e:
             logger.error(f"Error extracting PDF text from {pdf_path}: {e}")
             return ""
-                # If we got meaningful text, return it
 
     def extract_docx_text(self, docx_path: str) -> str:
         """Extract text content from Word document"""
         try:
-            doc = Document(docx_path)  # Use Document instead of docx.Document
+            doc = Document(docx_path)
             text = ""
             for paragraph in doc.paragraphs:
                 text += paragraph.text + "\n"
@@ -390,7 +574,6 @@ class HistoricalChatbot:
               
     def crawl_documents(self) -> List[Tuple[str, str]]:
         """Crawl the document directory and extract text content"""
-
         documents = []
         
         if not os.path.exists(self.data_path):
@@ -527,28 +710,7 @@ class HistoricalChatbot:
         except Exception as e:
             st.error(f"Error loading embeddings: {e}")
             return None
-    '''
-    def save_embeddings(self, df: pd.DataFrame, filename: str = 'historical_embeddings.pkl'):
-        """Save embeddings to pickle file"""
-        try:
-            df.to_pickle(filename)
-            st.success(f"Embeddings saved to {filename}")
-        except Exception as e:
-            st.error(f"Error saving embeddings: {e}")
     
-    def load_embeddings(self, filename: str = 'historical_embeddings.pkl') -> Optional[pd.DataFrame]:
-        """Load embeddings from pickle file"""
-        try:
-            df = pd.read_pickle(filename)
-            st.success(f"Embeddings loaded from {filename}")
-            return df
-        except FileNotFoundError:
-            st.info(f"No existing embeddings file found. Will create new embeddings.")
-            return None
-        except Exception as e:
-            st.error(f"Error loading embeddings: {e}")
-            return None
-    '''
     def load_or_create_embeddings(self):
         """Load existing embeddings or create new ones"""
         with st.spinner("Loading embeddings..."):
@@ -658,14 +820,23 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
         
         # For students: only proceed if relevant documents are found
         if len(relevant_docs) == 0 and not is_admin:
-            return """I can only help with questions related to the historical documents and topics covered in Professor Cox's course materials. 
+            response = """I can only help with questions related to the historical documents and topics covered in Professor Cox's course materials. 
 
-    Please try asking about:
-    - Topics covered in the assigned readings
-    - Historical events, people, or themes from the course documents
-    - Specific time periods or subjects we've studied
+Please try asking about:
+- Topics covered in the assigned readings
+- Historical events, people, or themes from the course documents
+- Specific time periods or subjects we've studied
 
-    If you have questions outside the course materials, please ask Professor Cox directly."""
+If you have questions outside the course materials, please ask Professor Cox directly."""
+            
+            # Log the interaction
+            log_conversation(
+                user_query=query,
+                bot_response=response,
+                course=st.session_state.get('selected_course', 'Unknown'),
+                relevant_docs=relevant_docs
+            )
+            return response
         
         # Build context from relevant documents
         context = ""
@@ -693,18 +864,18 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
         else:
             system_prompt = """You are Professor Cox's historical assistant with access to specific course documents. Your role is to:
 
-    1. Base your answer primarily on the provided course documents
-    2. Always cite which document(s) the information comes from
-    3. You may add relevant historical context or details that supplement the document content, but ONLY if they directly relate to the topics, events, people, or time periods discussed in the documents
-    4. Do not answer questions about topics that are completely unrelated to the course materials
+1. Base your answer primarily on the provided course documents
+2. Always cite which document(s) the information comes from
+3. You may add relevant historical context or details that supplement the document content, but ONLY if they directly relate to the topics, events, people, or time periods discussed in the documents
+4. Do not answer questions about topics that are completely unrelated to the course materials
 
-    Be educational and engaging while staying focused on the historical content covered in the course."""
+Be educational and engaging while staying focused on the historical content covered in the course."""
 
         full_prompt = f"""{system_prompt}
 
-    {context}{history_text}Current question: {query}
+{context}{history_text}Current question: {query}
 
-    Please provide a response based on the documents, supplementing with relevant historical knowledge only when it directly relates to the document content."""
+Please provide a response based on the documents, supplementing with relevant historical knowledge only when it directly relates to the document content."""
         
         # Make API call
         response = self.client.messages.create(
@@ -713,16 +884,30 @@ This is a temporary issue with Anthropic's servers, not with your documents or s
             temperature=0.3,
             messages=[{"role": "user", "content": full_prompt}]
         )
-        return response.content[0].text
+        
+        response_text = response.content[0].text
+        
+        # Log the conversation
+        log_conversation(
+            user_query=query,
+            bot_response=response_text,
+            course=st.session_state.get('selected_course', 'Unknown'),
+            relevant_docs=relevant_docs
+        )
+        
+        return response_text
 
 def main():
     check_site_access()
-    select_course()  # Add this after password check
+    select_course()
 
-    # Debug: Check what's in session state
-    #st.write("DEBUG - Session State:")
-    #st.write(f"selected_course: {st.session_state.get('selected_course', 'NOT SET')}")
-    #st.write(f"data_path: {st.session_state.get('data_path', 'NOT SET')}")
+    # Check if we should show logs (admin only)
+    if st.session_state.get('show_logs', False) and st.session_state.get('admin_authenticated', False):
+        view_conversation_logs()
+        if st.button("← Back to Chat"):
+            st.session_state.show_logs = False
+            st.rerun()
+        return
 
     create_custom_header()
     
@@ -734,7 +919,7 @@ def main():
         st.stop()
         
     # Get course-specific data path from session state
-    data_path = st.session_state.get('data_path', 'text/WorldHistory')  # fallback to World History
+    data_path = st.session_state.get('data_path', 'text/WorldHistory')
     
     # Default configuration
     max_tokens = 500
@@ -747,12 +932,12 @@ def main():
         "Claude 3 Haiku (Faster)": "claude-3-haiku-20240307",
         "Claude 3 Opus (Most Capable)": "claude-3-opus-20240229"
     }
-    selected_model = "Claude Sonnet 4"  # Changed default
+    selected_model = "Claude Sonnet 4"
     
     # Load embedding model
     embedding_model = load_embedding_model()
     
-     # Initialize chatbot with course-specific path
+    # Initialize chatbot with course-specific path
     if 'chatbot' not in st.session_state or st.session_state.chatbot.data_path != data_path:
         st.session_state.chatbot = HistoricalChatbot(
             api_key, data_path, max_tokens, embedding_model
@@ -784,6 +969,13 @@ def main():
         
         if clear_chat:
             st.session_state.messages = []
+            # Log chat clearing
+            log_conversation(
+                user_query="Admin cleared chat history",
+                bot_response="Chat history cleared",
+                course=st.session_state.get('selected_course', 'Unknown'),
+                relevant_docs=None
+            )
             st.rerun()
     
     # Initialize chat history
